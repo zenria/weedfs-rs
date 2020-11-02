@@ -1,4 +1,5 @@
-use crate::responses::{AssignResponse, Location};
+use crate::types::responses::AssignResponse;
+use crate::types::Location;
 use anyhow::anyhow;
 use anyhow::Context;
 use url::Url;

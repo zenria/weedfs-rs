@@ -1,3 +1,4 @@
+use crate::types::Location;
 use serde::Deserialize;
 use std::fmt::Debug;
 
@@ -14,13 +15,6 @@ pub struct AssignResponse {
 #[serde(rename_all = "camelCase")]
 pub struct LookupResponse {
     pub locations: Vec<Location>,
-}
-
-#[derive(Deserialize, Debug)]
-#[serde(rename_all = "camelCase")]
-pub struct Location {
-    pub public_url: String,
-    pub url: String,
 }
 
 #[derive(Deserialize, Debug)]

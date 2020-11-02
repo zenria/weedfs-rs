@@ -1,4 +1,4 @@
-use crate::dir_status::Replication;
+use crate::types::Replication;
 
 #[derive(Debug)]
 pub struct AssignRequest {

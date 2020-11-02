@@ -1,5 +1,6 @@
-use crate::requests::AssignRequest;
-use crate::responses::{AssignResponse, Location, LookupResponse, WriteResponse};
+use crate::types::requests::AssignRequest;
+use crate::types::responses;
+use crate::types::responses::{AssignResponse, LookupResponse, WriteResponse};
 use anyhow::anyhow;
 use anyhow::Context;
 use bytes::Bytes;
@@ -8,12 +9,11 @@ use reqwest::{Body, Client};
 use std::fs::File;
 use std::io::Read;
 use std::time::Duration;
+use types::Location;
 use url::Url;
 
-pub mod dir_status;
-pub mod requests;
-pub mod responses;
-pub mod volume_status;
+/// Expose types mostly used for deserialization of weed-fs responses
+pub mod types;
 
 mod utils;
 
@@ -140,6 +140,7 @@ impl WeedFSClient {
 
         Ok(response.bytes_stream())
     }
+
     /// Convenient method to read to a Vec<u8>
     pub async fn read_to_vec(&self, fid: &str, location: &Location) -> anyhow::Result<Vec<u8>> {
         let mut stream = self.streaming_read(fid, location).await?;
@@ -153,8 +154,8 @@ impl WeedFSClient {
 
 #[cfg(test)]
 mod test {
-    use crate::dir_status::Replication;
-    use crate::requests::AssignRequestBuilder;
+    use crate::types::requests::AssignRequestBuilder;
+    use crate::types::Replication;
     use crate::{utils, WeedFSClient};
     use std::fs::File;
     use std::io::Read;
@@ -175,6 +176,8 @@ mod test {
             )
             .await
             .expect("Unable to assign");
+        dbg!(&assign);
+
         let cargo = File::open("Cargo.toml").unwrap();
         let byte_writted = cli
             .write_file(&assign, cargo, "Cargo.toml".to_string())
@@ -186,6 +189,7 @@ mod test {
             .lookup(utils::get_volume_id(&assign.fid).unwrap())
             .await
             .expect("Unable to lookup for file");
+        dbg!(&lookup);
 
         let read_cargo = cli
             .read_to_vec(&assign.fid, &lookup.locations[0])
