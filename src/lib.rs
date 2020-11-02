@@ -2,7 +2,7 @@ use crate::requests::AssignRequest;
 use crate::responses::{AssignResponse, LookupResponse, WriteResponse};
 use anyhow::anyhow;
 use anyhow::Context;
-use reqwest::Client;
+use reqwest::{Body, Client};
 use std::fs::File;
 use std::io::Read;
 use std::time::Duration;
@@ -13,6 +13,7 @@ pub mod requests;
 pub mod responses;
 pub mod volume_status;
 
+/// Low-level WeedFS client.
 pub struct WeedFSClient {
     master_url: Url,
     http_client: Client,
@@ -59,7 +60,6 @@ impl WeedFSClient {
         }
 
         let assign_url = self.master_url.join(&path)?;
-        dbg!(&assign_url);
         let response = self
             .http_client
             .get(assign_url)
@@ -73,9 +73,31 @@ impl WeedFSClient {
         Ok(response.to_result()?)
     }
 
-    pub async fn write(
+    pub async fn write_stream<T: Into<Body>>(
         &self,
-        assign_response: AssignResponse,
+        assign_response: &AssignResponse,
+        stream: T,
+        filename: String,
+    ) -> anyhow::Result<u64> {
+        let part = reqwest::multipart::Part::stream(stream).file_name(sanitize_filename(filename));
+        let form = reqwest::multipart::Form::new().part("file", part);
+        let response = self
+            .http_client
+            .post(get_write_url(&assign_response)?)
+            .multipart(form)
+            .send()
+            .await
+            .context("unable to upload file")?;
+        let response = response
+            .json::<responses::Response<WriteResponse>>()
+            .await
+            .context("unable to read body")?;
+        Ok(response.to_result()?.size)
+    }
+
+    pub async fn write_file(
+        &self,
+        assign_response: &AssignResponse,
         mut file: File,
         filename: String,
     ) -> anyhow::Result<u64> {
@@ -91,21 +113,7 @@ impl WeedFSClient {
         let mut bytes = Vec::new();
         file.read_to_end(&mut bytes)?;
 
-        let part = reqwest::multipart::Part::bytes(bytes).file_name(sanitize_filename(filename));
-        let form = reqwest::multipart::Form::new().part("file", part);
-
-        let response = self
-            .http_client
-            .post(get_write_url(&assign_response)?)
-            .multipart(form)
-            .send()
-            .await
-            .context("unable to upload file")?;
-        let response = response
-            .json::<responses::Response<WriteResponse>>()
-            .await
-            .context("unable to read body")?;
-        Ok(response.to_result()?.size)
+        self.write_stream(assign_response, bytes, filename).await
     }
 }
 
@@ -121,7 +129,7 @@ fn get_write_url(assign_response: &AssignResponse) -> anyhow::Result<Url> {
 
     // FIXME here we should append some version on the end of the file id if the
     //       version is > 0; unfortunately, I do not known to what it corresponds to...
-    //       Maybe the "count" field of the assign response... who knows...
+    //       Maybe the "count" field of the assign response... who knows?...
 
     Url::parse(&url).context("Unable to build write url")
 }
@@ -161,7 +169,7 @@ mod test {
             .expect("Unable to assign");
         let cargo = File::open("Cargo.toml").unwrap();
         let byte_writted = cli
-            .write(assign, cargo, "Cargo.toml".to_string())
+            .write_file(&assign, cargo, "Cargo.toml".to_string())
             .await
             .expect("Unable to write file");
         dbg!(byte_writted);
