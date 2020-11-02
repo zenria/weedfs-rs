@@ -22,9 +22,12 @@ pub struct WeedFSClient {
     master_url: Url,
     http_client: Client,
 }
+pub mod error;
+
+pub type Result<T> = std::result::Result<T, error::WeedFSError>;
 
 impl WeedFSClient {
-    pub fn new(master_url: &str) -> anyhow::Result<Self> {
+    pub fn new(master_url: &str) -> Result<Self> {
         Ok(Self {
             master_url: Url::parse(master_url).context("Unable to parse master url")?,
             http_client: reqwest::ClientBuilder::new()
@@ -35,10 +38,11 @@ impl WeedFSClient {
         })
     }
 
-    pub async fn lookup(&self, volume_id: u64) -> anyhow::Result<LookupResponse> {
+    pub async fn lookup(&self, volume_id: u64) -> Result<LookupResponse> {
         let lookup_url = self
             .master_url
-            .join(&format!("/dir/lookup?volumeId={}", volume_id))?;
+            .join(&format!("/dir/lookup?volumeId={}", volume_id))
+            .context("lookup url building")?;
         let response = self
             .http_client
             .get(lookup_url)
@@ -52,7 +56,7 @@ impl WeedFSClient {
         Ok(response.to_result()?)
     }
 
-    pub async fn assign(&self, assign_request: AssignRequest) -> anyhow::Result<AssignResponse> {
+    pub async fn assign(&self, assign_request: AssignRequest) -> Result<AssignResponse> {
         let mut path = format!("/dir/assign?count={}", assign_request.version);
 
         if let Some(replication) = assign_request.replication_strategy {
@@ -63,7 +67,7 @@ impl WeedFSClient {
             path.push_str(&format!("&collection={}", collection));
         }
 
-        let assign_url = self.master_url.join(&path)?;
+        let assign_url = self.master_url.join(&path).context("Unable to build url")?;
         let response = self
             .http_client
             .get(assign_url)
@@ -82,7 +86,7 @@ impl WeedFSClient {
         assign_response: &AssignResponse,
         stream: T,
         filename: String,
-    ) -> anyhow::Result<u64> {
+    ) -> Result<u64> {
         let part =
             reqwest::multipart::Part::stream(stream).file_name(utils::sanitize_filename(filename));
         let form = reqwest::multipart::Form::new().part("file", part);
@@ -105,18 +109,19 @@ impl WeedFSClient {
         assign_response: &AssignResponse,
         mut file: File,
         filename: String,
-    ) -> anyhow::Result<u64> {
-        let meta = file.metadata()?;
+    ) -> Result<u64> {
+        let meta = file.metadata().context("unable to read file metadata")?;
         if !meta.is_file() {
-            return Err(anyhow!("Not a file!"));
+            Err(anyhow!("Not a file!"))?;
         }
         if meta.len() == 0 {
-            return Err(anyhow!("0-sized file is not allowed!"));
+            Err(anyhow!("0-sized file is not allowed!"))?;
         }
 
         // build multipart shit
         let mut bytes = Vec::new();
-        file.read_to_end(&mut bytes)?;
+        file.read_to_end(&mut bytes)
+            .context("unable to read file")?;
 
         self.write_stream(assign_response, bytes, filename).await
     }
@@ -126,7 +131,7 @@ impl WeedFSClient {
         &self,
         fid: &str,
         location: &Location,
-    ) -> anyhow::Result<impl futures::Stream<Item = reqwest::Result<Bytes>>> {
+    ) -> Result<impl futures::Stream<Item = reqwest::Result<Bytes>>> {
         let read_url = utils::get_read_url(fid, location)?;
 
         let response = self
@@ -134,7 +139,11 @@ impl WeedFSClient {
             .get(read_url)
             .send()
             .await
-            .context("unable to get file")?
+            .context("unable to get file")?;
+        if response.status() == 404 {
+            Err(error::ErrorKind::NotFound)?;
+        }
+        let response = response
             .error_for_status()
             .context("volume server returned an error")?;
 
@@ -142,11 +151,11 @@ impl WeedFSClient {
     }
 
     /// Convenient method to read to a Vec<u8>
-    pub async fn read_to_vec(&self, fid: &str, location: &Location) -> anyhow::Result<Vec<u8>> {
+    pub async fn read_to_vec(&self, fid: &str, location: &Location) -> Result<Vec<u8>> {
         let mut stream = self.streaming_read(fid, location).await?;
         let mut ret = Vec::new();
         while let Some(bytes) = stream.next().await {
-            ret.extend_from_slice(&bytes?);
+            ret.extend_from_slice(&bytes.context("unable to read body")?);
         }
         Ok(ret)
     }
