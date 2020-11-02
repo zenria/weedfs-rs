@@ -1,7 +1,9 @@
 use crate::requests::AssignRequest;
-use crate::responses::{AssignResponse, LookupResponse, WriteResponse};
+use crate::responses::{AssignResponse, Location, LookupResponse, WriteResponse};
 use anyhow::anyhow;
 use anyhow::Context;
+use bytes::Bytes;
+use futures_util::StreamExt;
 use reqwest::{Body, Client};
 use std::fs::File;
 use std::io::Read;
@@ -12,6 +14,8 @@ pub mod dir_status;
 pub mod requests;
 pub mod responses;
 pub mod volume_status;
+
+mod utils;
 
 /// Low-level WeedFS client.
 pub struct WeedFSClient {
@@ -79,11 +83,12 @@ impl WeedFSClient {
         stream: T,
         filename: String,
     ) -> anyhow::Result<u64> {
-        let part = reqwest::multipart::Part::stream(stream).file_name(sanitize_filename(filename));
+        let part =
+            reqwest::multipart::Part::stream(stream).file_name(utils::sanitize_filename(filename));
         let form = reqwest::multipart::Form::new().part("file", part);
         let response = self
             .http_client
-            .post(get_write_url(&assign_response)?)
+            .post(utils::get_write_url(&assign_response)?)
             .multipart(form)
             .send()
             .await
@@ -115,32 +120,34 @@ impl WeedFSClient {
 
         self.write_stream(assign_response, bytes, filename).await
     }
-}
 
-fn get_write_url(assign_response: &AssignResponse) -> anyhow::Result<Url> {
-    let mut url = String::new();
-    if !assign_response.public_url.starts_with("http") {
-        url.push_str("http://");
+    /// streaming read
+    pub async fn streaming_read(
+        &self,
+        fid: &str,
+        location: &Location,
+    ) -> anyhow::Result<impl futures::Stream<Item = reqwest::Result<Bytes>>> {
+        let read_url = utils::get_read_url(fid, location)?;
+
+        let response = self
+            .http_client
+            .get(read_url)
+            .send()
+            .await
+            .context("unable to get file")?
+            .error_for_status()
+            .context("volume server returned an error")?;
+
+        Ok(response.bytes_stream())
     }
-    url.push_str(&assign_response.public_url);
-
-    url.push_str("/");
-    url.push_str(&assign_response.fid);
-
-    // FIXME here we should append some version on the end of the file id if the
-    //       version is > 0; unfortunately, I do not known to what it corresponds to...
-    //       Maybe the "count" field of the assign response... who knows?...
-
-    Url::parse(&url).context("Unable to build write url")
-}
-
-fn sanitize_filename(filename: String) -> String {
-    if filename.len() == 0 {
-        "file".to_string()
-    } else if filename.len() > 255 {
-        filename[0..255].to_string()
-    } else {
-        filename
+    /// Convenient method to read to a Vec<u8>
+    pub async fn read_to_vec(&self, fid: &str, location: &Location) -> anyhow::Result<Vec<u8>> {
+        let mut stream = self.streaming_read(fid, location).await?;
+        let mut ret = Vec::new();
+        while let Some(bytes) = stream.next().await {
+            ret.extend_from_slice(&bytes?);
+        }
+        Ok(ret)
     }
 }
 
@@ -148,15 +155,16 @@ fn sanitize_filename(filename: String) -> String {
 mod test {
     use crate::dir_status::Replication;
     use crate::requests::AssignRequestBuilder;
-    use crate::WeedFSClient;
+    use crate::{utils, WeedFSClient};
     use std::fs::File;
+    use std::io::Read;
 
     fn get_master_url() -> String {
         std::env::var("MASTER_URL").expect("MASTER_URL env variable is needed for running test")
     }
 
     #[tokio::test]
-    async fn test_assign_and_write() {
+    async fn test_assign_write_lookup_and_read() {
         let cli = WeedFSClient::new(&get_master_url()).expect("Unable to build weed client");
         let assign = cli
             .assign(
@@ -173,6 +181,27 @@ mod test {
             .await
             .expect("Unable to write file");
         dbg!(byte_writted);
+
+        let lookup = cli
+            .lookup(utils::get_volume_id(&assign.fid).unwrap())
+            .await
+            .expect("Unable to lookup for file");
+
+        let read_cargo = cli
+            .read_to_vec(&assign.fid, &lookup.locations[0])
+            .await
+            .expect("Unable to read file");
+
+        let mut cargo_from_hdd = Vec::new();
+        File::open("Cargo.toml")
+            .unwrap()
+            .read_to_end(&mut cargo_from_hdd)
+            .unwrap();
+        println!(
+            "Read from weedfs: \n{}",
+            String::from_utf8_lossy(&read_cargo)
+        );
+        assert_eq!(read_cargo, cargo_from_hdd);
     }
 
     #[tokio::test]
