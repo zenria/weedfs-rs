@@ -1,4 +1,7 @@
+use serde::export::Formatter;
 use serde::Deserialize;
+use serde::Serialize;
+use std::fmt::Display;
 
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "PascalCase")]
@@ -47,7 +50,7 @@ pub struct Layout {
     pub replication: Replication,
     pub writables: Vec<u32>,
 }
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Serialize, Debug)]
 pub enum Replication {
     /// no replication
     #[serde(rename = "000")]
@@ -67,4 +70,10 @@ pub enum Replication {
     /// replicate once on a different rack, and once on a different data center
     #[serde(rename = "110")]
     OnceOnDifferentRackAndOnceOnDifferentDC,
+}
+
+impl Display for Replication {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        self.serialize(f)
+    }
 }

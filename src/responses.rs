@@ -13,13 +13,7 @@ pub struct AssignResponse {
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct LookupResponse {
-    pub locations: Option<Vec<Location>>,
-}
-
-impl LookupResponse {
-    pub fn iter(&self) -> impl Iterator<Item = &Location> {
-        self.locations.iter().flat_map(|locs| locs.iter())
-    }
+    pub locations: Vec<Location>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -44,7 +38,7 @@ pub enum ResponseError {
 }
 
 #[derive(Deserialize, Debug)]
-pub struct Response<T> {
+pub(crate) struct Response<T> {
     #[serde(flatten)]
     response: Option<T>,
     error: Option<String>,
