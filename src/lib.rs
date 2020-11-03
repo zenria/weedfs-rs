@@ -12,6 +12,7 @@ use std::time::Duration;
 use types::Location;
 use url::Url;
 
+pub mod error;
 /// Expose types mostly used for deserialization of weed-fs responses
 pub mod types;
 
@@ -22,16 +23,22 @@ pub struct WeedFSClient {
     master_url: Url,
     http_client: Client,
 }
-pub mod error;
 
 pub type Result<T> = std::result::Result<T, error::WeedFSError>;
 
 impl WeedFSClient {
     pub fn new(master_url: &str) -> Result<Self> {
+        Self::custom(
+            master_url,
+            reqwest::ClientBuilder::new().connect_timeout(Duration::from_secs(5)),
+        )
+    }
+
+    pub fn custom(master_url: &str, client_builder: reqwest::ClientBuilder) -> Result<Self> {
         Ok(Self {
             master_url: Url::parse(master_url).context("Unable to parse master url")?,
-            http_client: reqwest::ClientBuilder::new()
-                .connect_timeout(Duration::from_secs(5))
+            http_client: client_builder
+                // always force user-agent
                 .user_agent("weedfs-rs/1")
                 .build()
                 .context("Unable to build http client")?,
