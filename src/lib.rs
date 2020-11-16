@@ -4,7 +4,6 @@ use crate::types::responses::{AssignResponse, LookupResponse, WriteResponse};
 use anyhow::anyhow;
 use anyhow::Context;
 use futures::TryStreamExt;
-use futures_util::StreamExt;
 use reqwest::{Body, Client};
 use std::fs::File;
 use std::io::Read;
