@@ -18,6 +18,8 @@ pub mod types;
 
 mod utils;
 
+pub use utils::get_volume_id;
+
 /// Low-level WeedFS client.
 pub struct WeedFSClient {
     master_url: Url,
@@ -125,7 +127,6 @@ impl WeedFSClient {
             Err(anyhow!("0-sized file is not allowed!"))?;
         }
 
-        // build multipart shit
         let mut bytes = Vec::new();
         file.read_to_end(&mut bytes)
             .context("unable to read file")?;
