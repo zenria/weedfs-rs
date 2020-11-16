@@ -3,7 +3,6 @@ use crate::types::responses;
 use crate::types::responses::{AssignResponse, LookupResponse, WriteResponse};
 use anyhow::anyhow;
 use anyhow::Context;
-use bytes::Bytes;
 use futures_util::StreamExt;
 use reqwest::{Body, Client};
 use std::fs::File;
@@ -18,6 +17,8 @@ pub mod types;
 
 mod utils;
 
+pub use bytes::Bytes;
+pub use reqwest;
 pub use utils::get_volume_id;
 
 /// Low-level WeedFS client.
@@ -178,6 +179,7 @@ mod test {
     use std::io::Read;
 
     fn get_master_url() -> String {
+        dotenv::dotenv().expect("Error reading .env file");
         std::env::var("MASTER_URL").expect("MASTER_URL env variable is needed for running test")
     }
 
@@ -251,6 +253,8 @@ mod test {
                 .count(),
             2,
         );
-        assert!(cli.lookup(786754564231340654).await.is_err());
+        let notfound = cli.lookup(786754564231340654).await;
+        assert!(notfound.is_err());
+        println!("{:?}", notfound);
     }
 }
