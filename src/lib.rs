@@ -3,6 +3,7 @@ use crate::types::responses;
 use crate::types::responses::{AssignResponse, LookupResponse, WriteResponse};
 use anyhow::anyhow;
 use anyhow::Context;
+use futures::TryStreamExt;
 use futures_util::StreamExt;
 use reqwest::{Body, Client};
 use std::fs::File;
@@ -161,12 +162,15 @@ impl WeedFSClient {
 
     /// Convenient method to read to a Vec<u8>
     pub async fn read_to_vec(&self, fid: &str, location: &Location) -> Result<Vec<u8>> {
-        let mut stream = self.streaming_read(fid, location).await?;
-        let mut ret = Vec::new();
-        while let Some(bytes) = stream.next().await {
-            ret.extend_from_slice(&bytes.context("unable to read body")?);
-        }
-        Ok(ret)
+        self.streaming_read(fid, location)
+            .await?
+            .try_fold(Vec::new(), |mut buf, bytes| async move {
+                buf.extend_from_slice(&bytes);
+                Ok(buf)
+            })
+            .await
+            .map_err(anyhow::Error::from)
+            .map_err(error::WeedFSError::from)
     }
 }
 
