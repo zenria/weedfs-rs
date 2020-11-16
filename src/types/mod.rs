@@ -6,7 +6,7 @@ pub mod requests;
 pub mod responses;
 pub mod volume_status;
 
-#[derive(Deserialize, Serialize, Debug)]
+#[derive(Deserialize, Serialize, Debug, Copy, Clone)]
 pub enum Replication {
     /// no replication
     #[serde(rename = "000")]
