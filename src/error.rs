@@ -8,7 +8,14 @@ pub struct WeedFSError {
     repr: WeedFSErrorRepr,
 }
 
-impl Error for WeedFSError {}
+impl Error for WeedFSError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match &self.repr {
+            WeedFSErrorRepr::Simple(_) => None,
+            WeedFSErrorRepr::Other(e) => e.source(),
+        }
+    }
+}
 impl Display for WeedFSError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match &self.repr {
