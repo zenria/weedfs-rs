@@ -6,9 +6,9 @@ _Rust client (kinda) for old deployment (v0.45) of WeedFS (now known as SeaweedF
 
 WIP
 
-I will not push it on crates.io unless someone else needs it (which is very unlikely). 
+I will not push it on crates.io unless someone else really needs it (which is very unlikely). 
 
-Test are using arbitrary volume numbers that are only present in my testing env...
+Tests are using arbitrary volume numbers that are only present in my testing env...
 
 ## License
 
