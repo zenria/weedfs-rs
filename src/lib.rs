@@ -182,7 +182,7 @@ mod test {
     use std::io::Read;
 
     fn get_master_url() -> String {
-        dotenv::dotenv().expect("Error reading .env file");
+        dotenvy::dotenv().expect("Error reading .env file");
         std::env::var("MASTER_URL").expect("MASTER_URL env variable is needed for running test")
     }
 
